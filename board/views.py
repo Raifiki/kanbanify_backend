@@ -2,9 +2,10 @@ from django.contrib.auth.models import User
 from django.http import HttpResponse
 from rest_framework import viewsets
 from rest_framework.response import Response
+from rest_framework.exceptions import MethodNotAllowed
 
 from board.models import Board, Category
-from board.serializers import BoardSerializer
+from board.serializers import BoardSerializer, CategorySerializer
 
 # Create your views here.
 class BoardViewSet(viewsets.ModelViewSet):
@@ -29,14 +30,12 @@ class BoardViewSet(viewsets.ModelViewSet):
         Category.objects.create(title='Done', board=newBoard, position=2)
         
     def destroy(self, pk):
-        print(pk)
         board = Board.objects.get(id=pk)
         board.delete()
-        return HttpResponse('Board deleted')
+        return HttpResponse(f'Board {pk} deleted')
     
         
     def update(self, request, pk):
-        print('Board number: ',pk,' | Data: ', request.data)
         board = Board.objects.get(id=pk)
         if request.data.get('title') != None: 
             board.title = request.data.get('title')
@@ -61,3 +60,42 @@ class BoardViewSet(viewsets.ModelViewSet):
         for member in oldMembers: 
             if member in newMembers: continue 
             else: self.removeUser(member, board) 
+
+
+class CategoryViewSet(viewsets.ModelViewSet):
+    queryset = Category.objects.all()
+    serializer_class = CategorySerializer
+    permission_classes = []
+    def list(self, request, *args, **kwargs):
+        raise MethodNotAllowed('GET')
+    
+    def create(self, request):
+        board = Board.objects.get(id=request.data.get('board_id'))
+        newCategory = Category.objects.create(
+            title = request.data.get('title','newCategory'),
+            board = board,
+            position = Category.objects.filter(board=board).count(),
+        )
+        serialized_Category = CategorySerializer(newCategory).data
+        return Response(serialized_Category, content_type='application/json')
+    
+    
+    def destroy(self, request, pk):
+        board = Board.objects.get(id=request.data.get('board_id'))
+        category = Category.objects.get(id=pk)
+        resp = f'category {pk} not deleted'
+        if category in board.categories.all():
+            print(pk)
+            category.delete()
+            resp = f'category {pk} deleted'
+        return HttpResponse(resp) #ToDo: send error if board does nit fit
+    
+    def update(self, request, pk):
+        board = Board.objects.get(id=request.data.get('board_id'))
+        category = Category.objects.get(id=pk)
+        serialized_Category = f'category {pk}: Title not updated'
+        if category in board.categories.all() and request.data.get('title') != None:
+            category.title = request.data.get('title')
+            category.save()
+            serialized_Category = CategorySerializer(category).data
+        return Response(serialized_Category, content_type='application/json')

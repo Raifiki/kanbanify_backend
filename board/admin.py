@@ -21,6 +21,7 @@ class AdminCategory(admin.ModelAdmin):
         'id',
         'title',
         'board',
+        'position',
         ]
 
 admin.site.register(Category, AdminCategory)
