@@ -6,21 +6,32 @@ from rest_framework.response import Response
 from rest_framework.exceptions import MethodNotAllowed
 
 from board.models import Board, Category, Task
+from board.permissions import isUserMemberOfBoard
 from board.serializers import BoardSerializer, CategorySerializer, TaskSerializer
+
+from rest_framework.authentication import TokenAuthentication
+from rest_framework.permissions import IsAuthenticated
 
 # Create your views here.
 class BoardViewSet(viewsets.ModelViewSet):
     """
     API endpoint that allows users to be viewed or edited.
     """
-    queryset = Board.objects.filter(members__in=[User.objects.get(id=1)]).order_by('created_at') # Todo: exchange User with logged in user
+    queryset = Board.objects.all()
     serializer_class = BoardSerializer
-    permission_classes = [] # kann auch leer sein  für eingeloggten user: permissions.IsAuthenticated
+    authentication_classes = (TokenAuthentication,)
+    permission_classes = [IsAuthenticated]
+        
+    def list(self , request, *args, **kwargs):
+        queryset = Board.objects.filter(members__in=[request.user]).order_by('created_at')
+        serializer = BoardSerializer(queryset, many=True)
+        return Response(serializer.data)
+    
     def create(self, request):
         newBoard = Board.objects.create(
             title = request.data.get('title','newBoard'),
         )
-        newBoard.members.add(User.objects.get(id=request.data.get('user_id'))), # Todo: exchange User with logged in user
+        newBoard.members.add(request.user),
         self.createDefaultCategories(newBoard)
         serialized_Board = BoardSerializer(newBoard).data
         return Response(serialized_Board, content_type='application/json')
@@ -30,14 +41,16 @@ class BoardViewSet(viewsets.ModelViewSet):
         Category.objects.create(title='In Progress', board=newBoard, position=1)
         Category.objects.create(title='Done', board=newBoard, position=2)
         
-    def destroy(self, pk):
+    def destroy(self,request , pk):
         board = Board.objects.get(id=pk)
+        if request.user not in board.members.all(): raise MethodNotAllowed('You are not a member of this board')
         board.delete()
         return HttpResponse(f'Board {pk} deleted')
     
         
     def update(self, request, pk):
         board = Board.objects.get(id=pk)
+        if request.user not in board.members.all(): raise MethodNotAllowed('You are not a member of this board')
         if request.data.get('title') != None: 
             board.title = request.data.get('title')
             board.save()
@@ -50,11 +63,11 @@ class BoardViewSet(viewsets.ModelViewSet):
         return Response(serialized_Board, content_type='application/json')
     
     def removeUser(self, user, board):
-        board.members.remove(user) # ToDo exchange User with logged in user
+        board.members.remove(user)
         print('remove user')
 
     def addUser(self, user, board):
-        board.members.add(user) # ToDo exchange User with logged in user
+        board.members.add(user)
     
     def deleteMembers(self, newMembers,  board):
         oldMembers = board.members.all()
@@ -66,12 +79,13 @@ class BoardViewSet(viewsets.ModelViewSet):
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
-    permission_classes = []
+    authentication_classes = (TokenAuthentication,)
+    permission_classes = [IsAuthenticated, isUserMemberOfBoard]
     def list(self, request, *args, **kwargs):
         raise MethodNotAllowed('GET')
     
     def create(self, request):
-        board = Board.objects.get(id=request.data.get('board_id'))
+        board = Board.objects.get(id= self.request.query_params.get('board'))
         newCategory = Category.objects.create(
             title = request.data.get('title','newCategory'),
             board = board,
@@ -92,7 +106,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
         return HttpResponse(resp) #ToDo: send error if board does nit fit
     
     def update(self, request, pk):
-        board = Board.objects.get(id=request.data.get('board_id'))
+        board = Board.objects.get(id=self.request.query_params.get('board'))
         category = Category.objects.get(id=pk)
         serialized_Category = f'category {pk}: Title not updated'
         if category in board.categories.all() and request.data.get('title') != None:
@@ -104,22 +118,21 @@ class CategoryViewSet(viewsets.ModelViewSet):
 class TaskViewSet(viewsets.ModelViewSet):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
-    permission_classes = []
-    
+    authentication_classes = (TokenAuthentication,)
+    permission_classes = [IsAuthenticated, isUserMemberOfBoard]    
 
     def get_queryset(self):
         board = Board.objects.get(id = self.request.query_params.get('board')) 
         return self.queryset.filter(board=board)
 
     def list(self , request, *args, **kwargs):
-        if self.request.query_params.get('board') != None: queryset = self.get_queryset() 
-        else: queryset = Task.objects.all()
+        queryset = self.get_queryset() 
         serializer = TaskSerializer(queryset, many=True)
         return Response(serializer.data)
     
     
     def create(self, request):
-        board = Board.objects.get(id=request.data.get('board_id'))
+        board = Board.objects.get(id = self.request.query_params.get('board'))
         assigned_to = User.objects.get(id=request.data.get('assigned_to_id'))
         due_date = datetime.strptime(request.data.get('due_date'), '%Y-%m-%d') if request.data.get('due_date') != None else None
         category = Category.objects.get(id=request.data.get('category_id'))
@@ -129,7 +142,7 @@ class TaskViewSet(viewsets.ModelViewSet):
                 title = request.data.get('title','newCategory'),
                 description = request.data.get('description',''),
                 assigned_to = assigned_to,
-                created_from = User.objects.get(id=2), # Todo: exchange User with logged in user
+                created_from = request.user,
                 created_at = datetime.now(),
                 due_date = due_date,
                 priority = request.data.get('priority','medium'),
@@ -150,7 +163,7 @@ class TaskViewSet(viewsets.ModelViewSet):
         return HttpResponse(resp)
     
     def update(self, request, pk):
-        board = Board.objects.get(id=request.data.get('board_id'))
+        board = Board.objects.get(id = self.request.query_params.get('board'))
         task = Task.objects.get(id=pk)
         resp = f'Task {pk} not updated: task not found in board'
         if task in board.tasks.all():
