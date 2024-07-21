@@ -1,6 +1,6 @@
 from django.contrib.auth.models import Group, User
 from rest_framework import serializers
-from board.models import Board, Category
+from board.models import Board, Category, Task
 	
 class UserSerializer(serializers.HyperlinkedModelSerializer):
     class Meta:
@@ -22,4 +22,13 @@ class BoardSerializer(serializers.HyperlinkedModelSerializer):
     class Meta:
         model = Board
         fields = ['id','title','members','categories']
+        
+class TaskSerializer(serializers.HyperlinkedModelSerializer):
+    assigned_to = UserSerializer(read_only=True)
+    created_from = UserSerializer(read_only=True)
+    board = serializers.PrimaryKeyRelatedField(read_only=True)
+    category = CategorySerializer(read_only=True)
+    class Meta:
+        model = Task
+        fields = ['id','title','description','assigned_to','created_from','created_at','due_date','priority','label','board','category']
         

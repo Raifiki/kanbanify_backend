@@ -1,11 +1,12 @@
+from datetime import datetime
 from django.contrib.auth.models import User
 from django.http import HttpResponse
 from rest_framework import viewsets
 from rest_framework.response import Response
 from rest_framework.exceptions import MethodNotAllowed
 
-from board.models import Board, Category
-from board.serializers import BoardSerializer, CategorySerializer
+from board.models import Board, Category, Task
+from board.serializers import BoardSerializer, CategorySerializer, TaskSerializer
 
 # Create your views here.
 class BoardViewSet(viewsets.ModelViewSet):
@@ -81,7 +82,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
     
     
     def destroy(self, request, pk):
-        board = Board.objects.get(id=request.data.get('board_id'))
+        board = Board.objects.get(id = self.request.query_params.get('board')) 
         category = Category.objects.get(id=pk)
         resp = f'category {pk} not deleted'
         if category in board.categories.all():
@@ -99,3 +100,80 @@ class CategoryViewSet(viewsets.ModelViewSet):
             category.save()
             serialized_Category = CategorySerializer(category).data
         return Response(serialized_Category, content_type='application/json')
+    
+class TaskViewSet(viewsets.ModelViewSet):
+    queryset = Task.objects.all()
+    serializer_class = TaskSerializer
+    permission_classes = []
+    
+
+    def get_queryset(self):
+        board = Board.objects.get(id = self.request.query_params.get('board')) 
+        return self.queryset.filter(board=board)
+
+    def list(self , request, *args, **kwargs):
+        if self.request.query_params.get('board') != None: queryset = self.get_queryset() 
+        else: queryset = Task.objects.all()
+        serializer = TaskSerializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    
+    def create(self, request):
+        board = Board.objects.get(id=request.data.get('board_id'))
+        assigned_to = User.objects.get(id=request.data.get('assigned_to_id'))
+        due_date = datetime.strptime(request.data.get('due_date'), '%Y-%m-%d') if request.data.get('due_date') != None else None
+        category = Category.objects.get(id=request.data.get('category_id'))
+        resp = 'Task not created: Category not found in board'
+        if category in board.categories.all():
+            newTask = Task.objects.create(
+                title = request.data.get('title','newCategory'),
+                description = request.data.get('description',''),
+                assigned_to = assigned_to,
+                created_from = User.objects.get(id=2), # Todo: exchange User with logged in user
+                created_at = datetime.now(),
+                due_date = due_date,
+                priority = request.data.get('priority','medium'),
+                label = request.data.get('label',''),
+                category = category,
+                board = board,
+            )
+            resp = TaskSerializer(newTask).data
+        return Response(resp, content_type='application/json')
+    
+    def destroy(self, request, pk):
+        board = Board.objects.get(id = self.request.query_params.get('board')) 
+        task = Task.objects.get(id=pk)
+        resp = f'task {pk} not deleted: Task not found in board'
+        if task in board.tasks.all():
+            task.delete()
+            resp = f'task {pk} deleted'
+        return HttpResponse(resp)
+    
+    def update(self, request, pk):
+        board = Board.objects.get(id=request.data.get('board_id'))
+        task = Task.objects.get(id=pk)
+        resp = f'Task {pk} not updated: task not found in board'
+        if task in board.tasks.all():
+            if request.data.get('title') != None:
+                task.title = request.data.get('title')
+            if request.data.get('description') != None:
+                task.description = request.data.get('description')
+            if request.data.get('assigned_to_id') != None:
+                user = User.objects.get(id=request.data.get('assigned_to_id'))
+                if user in board.members.all(): 
+                    task.assigned_to = User.objects.get(id=request.data.get('assigned_to_id'))
+            if request.data.get('due_date') != None:
+                task.due_date = datetime.strptime(request.data.get('due_date'), '%Y-%m-%d') if request.data.get('due_date') != None else None
+            if request.data.get('priority') != None:
+                task.priority = request.data.get('priority')
+            if request.data.get('label') != None:
+                task.label = request.data.get('label')
+            if request.data.get('category_id') != None:
+                category = Category.objects.get(id=request.data.get('category_id'))
+                if category in board.categories.all():
+                    task.category = Category.objects.get(id=request.data.get('category_id'))
+            task.save()
+            resp = TaskSerializer(task).data
+        return Response(resp, content_type='application/json')
+    
+    
