@@ -5,9 +5,8 @@ from rest_framework.response import Response
 from django.contrib.auth.models import User
 from rest_framework import viewsets
 from rest_framework.authentication import TokenAuthentication
-from rest_framework.permissions import IsAuthenticated
 from rest_framework import permissions
-
+from rest_framework.exceptions import MethodNotAllowed
 from board.serializers import UserSerializer
 
 # Create your views here.
@@ -52,6 +51,9 @@ class UserViewSet(viewsets.ModelViewSet):
         if User.objects.filter(email=email).exists(): return HttpResponse('Email already exists')
         User.objects.create_user(username, email, password)
         return  HttpResponse('User created')
+    
+    def destroy(self, request, *args, **kwargs):
+        raise MethodNotAllowed('Cannot delete users')
     
     def validateData(self, data):
         return data.get('username') and data.get('email') and data.get('password') and data.get('passwordRepeat')
