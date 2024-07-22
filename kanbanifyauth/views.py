@@ -44,13 +44,16 @@ class UserViewSet(viewsets.ModelViewSet):
         return [permissions.IsAuthenticated()]
     
     def create(self, request):
-        if not self.validateData(request.data): return HttpResponse('Missing data')
-        username, email, password, passwordRepeat = self.getData(request.data)
-        if password != passwordRepeat: return HttpResponse('Passwords do not match')
-        if  User.objects.filter(username=username).exists(): return HttpResponse('Username already exists')
-        if User.objects.filter(email=email).exists(): return HttpResponse('Email already exists')
-        User.objects.create_user(username, email, password)
-        return  HttpResponse('User created')
+        if not self.validateData(request.data): return HttpResponse('Missing data', status=400)
+        username, email, password, passwordRepeat, first_name, lastt_name = self.getData(request.data)
+        if password != passwordRepeat: return HttpResponse('Passwords do not match', status=400)
+        if  User.objects.filter(username=username).exists(): return HttpResponse('Username already exists', status=400)
+        if User.objects.filter(email=email).exists(): return HttpResponse('Email already exists', status=400)
+        user = User.objects.create_user(username, email, password)
+        user.first_name = first_name
+        user.last_name = lastt_name
+        user.save()
+        return  HttpResponse('User created', content_type='text/plain')
     
     def destroy(self, request, *args, **kwargs):
         raise MethodNotAllowed('Cannot delete users')
@@ -63,5 +66,7 @@ class UserViewSet(viewsets.ModelViewSet):
         email = data.get('email')
         password = data.get('password')
         passwordRepeat = data.get('passwordRepeat')
-        return username, email, password, passwordRepeat
+        first_name = data.get('firstname')
+        last_name = data.get('surename')
+        return username, email, password, passwordRepeat, first_name, last_name
 
