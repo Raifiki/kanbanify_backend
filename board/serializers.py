@@ -31,4 +31,16 @@ class TaskSerializer(serializers.HyperlinkedModelSerializer):
     class Meta:
         model = Task
         fields = ['id','title','description','assigned_to','created_from','created_at','due_date','priority','label','board','category']
+    
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        representation['created_at'] = self.getCorrectDate(instance.created_at)
+        representation['due_date'] = self.getCorrectDate(instance.due_date)
+        return representation
+    
+    def getCorrectDate(self, date):
+        if date == None:
+            return None
+        else:
+            return date.strftime('%Y-%m-%d')
         
