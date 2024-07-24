@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.exceptions import MethodNotAllowed
 
 from board.models import Board, Category, Task
-from board.permissions import isUserMemberOfBoard
+from board.permissions import isCategoryInBoard, isUserMemberOfBoard
 from board.serializers import BoardSerializer, CategorySerializer, TaskSerializer
 
 from rest_framework.authentication import TokenAuthentication
@@ -80,9 +80,12 @@ class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
     authentication_classes = (TokenAuthentication,)
-    permission_classes = [IsAuthenticated, isUserMemberOfBoard]
+    permission_classes = [IsAuthenticated, isUserMemberOfBoard, isCategoryInBoard]
     def list(self, request, *args, **kwargs):
-        raise MethodNotAllowed('GET')
+        board = Board.objects.get(id = self.request.query_params.get('board'))
+        queryset = Category.objects.filter(board = board).order_by('position')
+        serializer = CategorySerializer(queryset, many=True)
+        return Response(serializer.data)
     
     def create(self, request):
         board = Board.objects.get(id= self.request.query_params.get('board'))
@@ -109,7 +112,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
         board = Board.objects.get(id=self.request.query_params.get('board'))
         category = Category.objects.get(id=pk)
         serialized_Category = f'category {pk}: Title not updated'
-        if category in board.categories.all() and request.data.get('title') != None:
+        if request.data.get('title') != None:
             category.title = request.data.get('title')
             category.save()
             serialized_Category = CategorySerializer(category).data
